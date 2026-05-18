@@ -54,6 +54,7 @@ from .schema import (
     Field,
     Float64,
     Int64,
+    Regex,
     Schema,
     String,
     ValidationIssue,
@@ -120,4 +121,5 @@ __all__ = [
     "CsvReadError",
     "TypeCastError",
     "normalize_unicode",
+    "Regex",
 ]
