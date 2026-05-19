@@ -180,22 +180,30 @@ std::string normalize_numeric(const std::string& value, const CsvConfig& config)
     return s;
 }
 
-bool looks_like_integer_literal(const std::string& value) {
-    if (value.empty()) return false;
-    size_t start = 0;
-    if (value[0] == '-' || value[0] == '+') {
-        start = 1;
-    }
-    if (start == value.size()) return false;
-    return std::all_of(value.begin() + static_cast<std::ptrdiff_t>(start), value.end(),
-                       [](unsigned char ch) { return std::isdigit(ch); });
-}
-
 void validate_row_width(size_t row_number, size_t expected, size_t actual) {
     if (actual == expected) return;
     throw std::runtime_error("CSV row " + std::to_string(row_number) + " has " +
                              std::to_string(actual) + " fields; expected " +
                              std::to_string(expected));
+}
+
+// Detect if a numeric string has leading zeros that indicate it's likely an
+// identifier (ZIP code, account ID, product code, etc.) rather than a true
+// numeric value. Identifiers with leading zeros should be preserved as strings.
+static bool has_leading_zero_indicator(const std::string& cleaned) {
+    // Must be longer than a single zero
+    if (cleaned.size() <= 1) {
+        return false;
+    }
+
+    // Must start with leading zero
+    if (cleaned[0] != '0') {
+        return false;
+    }
+
+    // Every character must be a digit
+    return std::all_of(cleaned.begin(), cleaned.end(),
+                       [](unsigned char ch) { return std::isdigit(ch); });
 }
 
 }  // namespace
@@ -279,11 +287,14 @@ DType CsvParser::infer_type(const std::string& value) const {
         (void)val;
         if (end != start && *end == '\0') {
             if (errno == ERANGE) return DType::STRING;
+
+            if (has_leading_zero_indicator(cleaned)) {
+                return DType::STRING;
+            }
+
             return DType::INT64;
         }
     }
-
-    if (looks_like_integer_literal(cleaned)) return DType::STRING;
 
     // Try float64
     {
@@ -364,8 +375,10 @@ CellValue CsvParser::parse_value(const std::string& raw, DType dtype) const {
                 return std::monostate{};
             }
         }
-        case DType::STRING:
+        case DType::STRING: {
+            // Keep raw string values exactly as they appear in the CSV
             return raw;
+        }
         default:
             return std::monostate{};
     }
